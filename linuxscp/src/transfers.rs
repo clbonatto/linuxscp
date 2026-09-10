@@ -293,6 +293,7 @@ struct Shared {
     /// A worker failed; siblings drain out instead of starting new files.
     failed: AtomicBool,
     overwrite_all: AtomicBool,
+    overwrite_in_place: bool,
     skip_all: AtomicBool,
     /// Serializes conflict prompts so the user sees one dialog at a time.
     conflict_gate: tokio::sync::Mutex<()>,
@@ -439,6 +440,7 @@ impl Job {
             failed: AtomicBool::new(false),
             // Pre-answered conflict policy: skip the dialog entirely.
             overwrite_all: AtomicBool::new(request.overwrite),
+            overwrite_in_place: request.overwrite_in_place,
             skip_all: AtomicBool::new(false),
             conflict_gate: tokio::sync::Mutex::new(()),
             waiting_conflicts: AtomicU32::new(0),
@@ -654,10 +656,9 @@ impl Worker {
         self.shared.set_current(&name);
         self.shared.emit(false).await;
 
-        // Small files skip the `.filepart` stage-and-rename dance: over a
-        // real link its extra round trips cost more than re-sending the
-        // whole file would after an interruption.
-        let use_part = item.size >= RESUME_THRESHOLD;
+        // Small files skip the `.filepart` stage-and-rename dance; editor
+        // refreshes also skip it so external editors keep the same inode.
+        let use_part = item.size >= RESUME_THRESHOLD && !self.shared.overwrite_in_place;
         let part_path = format!("{}{}", item.dst_final, PART_SUFFIX);
         let mut offset: u64 = 0;
 
@@ -677,7 +678,13 @@ impl Worker {
             None
         };
         let mut dst_exists = existing.is_some();
-        if let Some(existing) = existing {
+        let previous_owner = existing
+            .as_ref()
+            .and_then(|entry| entry.owner.as_ref().cloned());
+        let previous_group = existing
+            .as_ref()
+            .and_then(|entry| entry.group.as_ref().cloned());
+        if let Some(existing) = existing.as_ref() {
             let decision = self
                 .decide_conflict(&name, item.size, existing.size)
                 .await?;
@@ -777,6 +784,15 @@ impl Worker {
                 .context("renaming completed file into place")?;
         }
 
+        // Preserve the overwritten destination owner/group best-effort; this
+        // matters for elevated uploads that create a replacement as root.
+        if previous_owner.is_some() || previous_group.is_some() {
+            if let Ok((uid, gid)) =
+                fsops::resolve_ids(self.dst, previous_owner, previous_group).await
+            {
+                fsops::chown(self.dst, &item.dst_final, uid, gid).await.ok();
+            }
+        }
         // Preserve permissions best-effort, from the listing we already have.
         if let Some(mode) = item.mode {
             fsops::chmod(self.dst, &item.dst_final, mode).await.ok();
