@@ -786,7 +786,7 @@ impl Worker {
 
         // Preserve the overwritten destination owner/group best-effort; this
         // matters for elevated uploads that create a replacement as root.
-        if previous_owner.is_some() || previous_group.is_some() {
+        if use_part && dst_exists && (previous_owner.is_some() || previous_group.is_some()) {
             if let Ok((uid, gid)) =
                 fsops::resolve_ids(self.dst, previous_owner, previous_group).await
             {

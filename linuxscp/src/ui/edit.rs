@@ -46,7 +46,7 @@ struct EditSession {
     /// The temp copy handed to the editor.
     local_path: PathBuf,
     /// Remote version this temp copy was downloaded from.
-    remote_version: RemoteVersion,
+    remote_version: Cell<RemoteVersion>,
     /// Keeps the gio watch alive; dropping it would cancel the monitor.
     _monitor: gio::FileMonitor,
     /// Pending debounce timer for change events.
@@ -143,7 +143,7 @@ impl EditManager {
         let remote_version = RemoteVersion::from_entry(&entry);
         let existing = { self.sessions.borrow().get(&key).cloned() };
         if let Some(session) = existing {
-            if session.remote_version == remote_version {
+            if session.remote_version.get() == remote_version {
                 self.launch_editor(&session.local_path);
                 return;
             }
@@ -154,6 +154,10 @@ impl EditManager {
                 self.toast("That file is still being saved; try again when the upload finishes.");
                 self.launch_editor(&session.local_path);
                 return;
+            }
+            session._monitor.cancel();
+            if let Some(timer) = session.debounce.borrow_mut().take() {
+                timer.remove();
             }
             self.sessions.borrow_mut().remove(&key);
         }
@@ -219,10 +223,21 @@ impl EditManager {
                 let session = self.sessions.borrow().get(&key).cloned();
                 if let Some(session) = session {
                     session.uploading.set(false);
-                    // A save landed mid-upload: push the newest contents.
-                    if session.dirty.take() {
-                        self.start_upload(key);
-                    }
+                    let this = self.clone();
+                    let remote_path = key.1.clone();
+                    let backend = session.backend;
+                    glib::spawn_future_local(async move {
+                        let stat = runtime()
+                            .spawn(async move { fsops::stat(backend, &remote_path).await })
+                            .await;
+                        if let Ok(Ok(entry)) = stat {
+                            session.remote_version.set(RemoteVersion::from_entry(&entry));
+                        }
+                        // A save landed mid-upload: push the newest contents.
+                        if session.dirty.take() {
+                            this.start_upload(key);
+                        }
+                    });
                 }
             }
         }
@@ -245,7 +260,7 @@ impl EditManager {
             backend: dl.backend,
             remote_dir: dl.remote_dir,
             local_path: dl.local_path.clone(),
-            remote_version: dl.remote_version,
+            remote_version: Cell::new(dl.remote_version),
             _monitor: monitor.clone(),
             debounce: RefCell::new(None),
             uploading: Cell::new(false),
@@ -255,7 +270,7 @@ impl EditManager {
         {
             let this = self.clone();
             let key = dl.key.clone();
-            let session = session.clone();
+            let session = Rc::downgrade(&session);
             monitor.connect_changed(move |_, _, _, event| {
                 use gio::FileMonitorEvent as E;
                 // Editors save as plain writes (Changed/ChangesDoneHint) or
@@ -268,6 +283,9 @@ impl EditManager {
                 ) {
                     return;
                 }
+                let Some(session) = session.upgrade() else {
+                    return;
+                };
                 // Restart the debounce window on every event in the burst.
                 if let Some(old) = session.debounce.borrow_mut().take() {
                     old.remove();
@@ -314,7 +332,10 @@ impl EditManager {
                             items: vec![entry],
                             dst_dir: session.remote_dir.clone(),
                             move_src: false,
-                            // The remote file existing is the whole point.
+                            // Keep the remote inode for editor saves. This trades
+                            // atomic staging for preserving editor watches,
+                            // ownership, and hard links; an interrupted upload
+                            // can therefore leave a truncated remote file.
                             overwrite: true,
                             overwrite_in_place: true,
                         },
