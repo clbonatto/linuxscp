@@ -29,8 +29,9 @@ pub struct SiteManagerHandlers {
     pub save_site: Box<dyn Fn(Site, SecretUpdate, String)>,
     pub delete_site: Box<dyn Fn(String)>,
     pub add_folder: Box<dyn Fn(String, String)>,
-    /// Move a site (by id) into a folder (by id; "" = root).
-    pub move_site: Box<dyn Fn(String, String)>,
+    /// Move a site (by id) into a folder (by id; "" = root), inserting it
+    /// before the given site id when dropped directly onto a site row.
+    pub move_site: Box<dyn Fn(String, String, Option<String>)>,
     /// Move a folder (by id), subtree included, into a folder ("" = root).
     pub move_folder: Box<dyn Fn(String, String)>,
     pub delete_folder: Box<dyn Fn(String)>,
@@ -411,8 +412,9 @@ pub fn show(parent: &impl IsA<gtk::Widget>, handlers: SiteManagerHandlers) {
     };
 
     // Drag & drop: move the dragged site or folder into the target folder
-    // (dropping onto a site targets its containing folder; the background
-    // = root), then rebuild with the moved row kept selected. Impossible
+    // (dropping onto a site targets its containing folder, positioned right
+    // before it, so rows can be reordered within a folder; the background =
+    // root), then rebuild with the moved row kept selected. Impossible
     // folder moves (into themselves or their own subtree) are no-ops.
     {
         let handlers = handlers.clone();
@@ -421,16 +423,19 @@ pub fn show(parent: &impl IsA<gtk::Widget>, handlers: SiteManagerHandlers) {
             let Some((kind, id)) = payload.split_once(':') else {
                 return;
             };
-            let dest = match &target {
-                None => String::new(),
-                Some(node) if node.is_folder() => node.id(),
-                Some(node) => (handlers.tree)()
-                    .parent_id_of(&node.id())
-                    .unwrap_or_default(),
+            let (dest, before_id) = match &target {
+                None => (String::new(), None),
+                Some(node) if node.is_folder() => (node.id(), None),
+                Some(node) => (
+                    (handlers.tree)()
+                        .parent_id_of(&node.id())
+                        .unwrap_or_default(),
+                    Some(node.id()),
+                ),
             };
             match kind {
                 "folder" => (handlers.move_folder)(id.to_string(), dest),
-                _ => (handlers.move_site)(id.to_string(), dest),
+                _ => (handlers.move_site)(id.to_string(), dest, before_id),
             }
             rebuild(Some(id.to_string()));
         }));

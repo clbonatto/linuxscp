@@ -428,11 +428,16 @@ impl App {
             .find_map(|pane| pane.session_id());
         match remote {
             Some(id) => {
-                let host = sessions::get(id)
-                    .map(|h| h.host)
+                let handle = sessions::get(id);
+                let use_name = self.settings.borrow().tab_shows_name;
+                let text = handle
+                    .as_ref()
+                    .filter(|h| use_name && !h.display_name.is_empty())
+                    .map(|h| h.display_name.clone())
+                    .or_else(|| handle.as_ref().map(|h| h.host.clone()))
                     .unwrap_or_else(|| "Remote".into());
-                page.set_title(&host);
-                page.set_tooltip(&host);
+                page.set_title(&text);
+                page.set_tooltip(&text);
                 page.set_icon(Some(&themed_icon("network-server-symbolic")));
             }
             None => {
@@ -627,8 +632,30 @@ impl App {
         group.add(&sound_row);
         group.add(&desktop_row);
 
+        let tabs_group = adw::PreferencesGroup::builder()
+            .title("Tabs")
+            .description("How connected tabs are labeled")
+            .build();
+        let tab_name_row = adw::SwitchRow::builder()
+            .title("Use Name as tab description")
+            .subtitle("Show the saved site's name on the tab instead of its host")
+            .active(self.settings.borrow().tab_shows_name)
+            .build();
+        {
+            let this = self.clone();
+            tab_name_row.connect_active_notify(move |row| {
+                let active = row.is_active();
+                this.with_settings_saved(|s| s.tab_shows_name = active);
+                for ws in this.workspaces.borrow().iter() {
+                    this.refresh_tab_title(ws);
+                }
+            });
+        }
+        tabs_group.add(&tab_name_row);
+
         let page = adw::PreferencesPage::new();
         page.add(&group);
+        page.add(&tabs_group);
         let dialog = adw::PreferencesDialog::new();
         dialog.set_title("Preferences");
         dialog.add(&page);
@@ -1200,9 +1227,11 @@ impl App {
             },
             move_site: {
                 let this = self.clone();
-                Box::new(move |site_id, dest_id| {
+                Box::new(move |site_id, dest_id, before_id| {
                     this.with_settings_saved(|settings| {
-                        settings.sites.move_site_to(&site_id, &dest_id);
+                        settings
+                            .sites
+                            .move_site_to(&site_id, &dest_id, before_id.as_deref());
                     });
                 })
             },
@@ -1332,7 +1361,12 @@ impl App {
                 Ok(Ok(conn)) => {
                     sessions::register(
                         id,
-                        sessions::SessionHandle::new(conn.sftp, conn.cancel, spec.host.clone()),
+                        sessions::SessionHandle::new(
+                            conn.sftp,
+                            conn.cancel,
+                            spec.host.clone(),
+                            spec.display_name.clone(),
+                        ),
                     );
                     this.session_specs.borrow_mut().insert(id, spec.clone());
                     let label = match spec.elevation {

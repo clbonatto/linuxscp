@@ -92,6 +92,7 @@ impl Site {
             sftp_server_path: None,
             extra_ssh_args: Vec::new(),
             secret: None,
+            display_name: self.name.clone(),
         }
     }
 }
@@ -248,16 +249,25 @@ impl Folder {
     }
 
     /// Move a site into the folder `dest_id` (the root when empty or
-    /// unknown). Returns true when the site actually moved.
-    pub fn move_site_to(&mut self, site_id: &str, dest_id: &str) -> bool {
+    /// unknown), inserting it immediately before `before_id` when that site
+    /// is found there (drag-and-drop reordering), otherwise appended to the
+    /// end. Returns true when the site actually moved.
+    pub fn move_site_to(&mut self, site_id: &str, dest_id: &str, before_id: Option<&str>) -> bool {
+        if before_id == Some(site_id) {
+            return false; // dropped onto itself
+        }
         let dest = self.folder_or_root_mut(dest_id).id.clone();
-        if self.parent_id_of(site_id) == Some(dest.clone()) {
+        if before_id.is_none() && self.parent_id_of(site_id) == Some(dest.clone()) {
             return false;
         }
         let Some(site) = self.remove_site(site_id) else {
             return false;
         };
-        self.folder_or_root_mut(&dest).sites.push(site);
+        let dest_folder = self.folder_or_root_mut(&dest);
+        let pos = before_id
+            .and_then(|id| dest_folder.sites.iter().position(|s| s.id == id))
+            .unwrap_or(dest_folder.sites.len());
+        dest_folder.sites.insert(pos, site);
         true
     }
 
@@ -322,6 +332,9 @@ pub struct Settings {
     /// Send a desktop notification when a transfer completes.
     #[serde(default = "enabled")]
     pub notify_desktop: bool,
+    /// Show the saved site's name on the tab instead of its host.
+    #[serde(default)]
+    pub tab_shows_name: bool,
 }
 
 fn enabled() -> bool {
@@ -338,6 +351,7 @@ impl Default for Settings {
             left_width: None,
             notify_sound: true,
             notify_desktop: true,
+            tab_shows_name: false,
         }
     }
 }
@@ -437,20 +451,38 @@ mod tests {
         let site_id = root.sites[0].id.clone();
 
         // Root -> folder.
-        assert!(root.move_site_to(&site_id, &prod_id));
+        assert!(root.move_site_to(&site_id, &prod_id, None));
         assert!(root.sites.is_empty());
         assert_eq!(root.folders[0].sites.len(), 1);
 
         // Already there: no-op.
-        assert!(!root.move_site_to(&site_id, &prod_id));
+        assert!(!root.move_site_to(&site_id, &prod_id, None));
 
         // Folder -> root ("" and the root id both mean root).
-        assert!(root.move_site_to(&site_id, ""));
+        assert!(root.move_site_to(&site_id, "", None));
         assert_eq!(root.sites.len(), 1);
         assert!(root.folders[0].sites.is_empty());
 
         // Unknown site id: no-op.
-        assert!(!root.move_site_to("missing", &prod_id));
+        assert!(!root.move_site_to("missing", &prod_id, None));
+    }
+
+    #[test]
+    fn move_site_reorders_before_target() {
+        let mut root = Folder::default();
+        root.sites.push(Site::new("a", "a.example.com"));
+        root.sites.push(Site::new("b", "b.example.com"));
+        root.sites.push(Site::new("c", "c.example.com"));
+        let a_id = root.sites[0].id.clone();
+        let c_id = root.sites[2].id.clone();
+
+        // Drag "c" before "a": order becomes c, a, b.
+        assert!(root.move_site_to(&c_id, "", Some(&a_id)));
+        let names: Vec<_> = root.sites.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, vec!["c", "a", "b"]);
+
+        // Dropping onto itself is a no-op.
+        assert!(!root.move_site_to(&c_id, "", Some(&c_id)));
     }
 
     #[test]
