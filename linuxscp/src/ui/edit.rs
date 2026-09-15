@@ -47,8 +47,9 @@ struct EditSession {
     local_path: PathBuf,
     /// Remote version this temp copy was downloaded from.
     remote_version: Cell<RemoteVersion>,
-    /// Keeps the gio watch alive; dropping it would cancel the monitor.
-    _monitor: gio::FileMonitor,
+    /// The gio watch on the temp copy; cancelled explicitly when the
+    /// session is torn down for a re-download.
+    monitor: gio::FileMonitor,
     /// Pending debounce timer for change events.
     debounce: RefCell<Option<glib::SourceId>>,
     /// An upload is currently in flight.
@@ -147,15 +148,13 @@ impl EditManager {
                 self.launch_editor(&session.local_path);
                 return;
             }
-            if session.uploading.get()
-                || session.dirty.get()
-                || session.debounce.borrow().is_some()
+            if session.uploading.get() || session.dirty.get() || session.debounce.borrow().is_some()
             {
                 self.toast("That file is still being saved; try again when the upload finishes.");
                 self.launch_editor(&session.local_path);
                 return;
             }
-            session._monitor.cancel();
+            session.monitor.cancel();
             if let Some(timer) = session.debounce.borrow_mut().take() {
                 timer.remove();
             }
@@ -222,18 +221,25 @@ impl EditManager {
             Pending::Upload(key) => {
                 let session = self.sessions.borrow().get(&key).cloned();
                 if let Some(session) = session {
-                    session.uploading.set(false);
                     let this = self.clone();
                     let remote_path = key.1.clone();
                     let backend = session.backend;
                     glib::spawn_future_local(async move {
+                        // Learn the version we just produced so the next
+                        // reopen doesn't mistake our own save for a remote
+                        // change.
                         let stat = runtime()
                             .spawn(async move { fsops::stat(backend, &remote_path).await })
                             .await;
                         if let Ok(Ok(entry)) = stat {
-                            session.remote_version.set(RemoteVersion::from_entry(&entry));
+                            session
+                                .remote_version
+                                .set(RemoteVersion::from_entry(&entry));
                         }
-                        // A save landed mid-upload: push the newest contents.
+                        // Stay "uploading" until here: a save landing during
+                        // the stat is parked in `dirty` and flushed once below,
+                        // rather than racing a second in-place upload.
+                        session.uploading.set(false);
                         if session.dirty.take() {
                             this.start_upload(key);
                         }
@@ -261,7 +267,7 @@ impl EditManager {
             remote_dir: dl.remote_dir,
             local_path: dl.local_path.clone(),
             remote_version: Cell::new(dl.remote_version),
-            _monitor: monitor.clone(),
+            monitor: monitor.clone(),
             debounce: RefCell::new(None),
             uploading: Cell::new(false),
             dirty: Cell::new(false),
