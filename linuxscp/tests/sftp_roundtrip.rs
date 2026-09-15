@@ -97,6 +97,7 @@ fn sftp_roundtrip_with_resume() {
                 dst_dir: dst_dir.clone(),
                 move_src: false,
                 overwrite: false,
+                overwrite_in_place: false,
             },
             events_tx.clone(),
         );
@@ -126,6 +127,7 @@ fn sftp_roundtrip_with_resume() {
                 dst_dir: down_dir.clone(),
                 move_src: false,
                 overwrite: false,
+                overwrite_in_place: false,
             },
             events_tx.clone(),
         );
@@ -304,6 +306,7 @@ fn remote_scan_and_copy_overlap() {
                 dst_dir: dst.clone(),
                 move_src: false,
                 overwrite: false,
+                overwrite_in_place: false,
             },
             events_tx.clone(),
         );
@@ -423,6 +426,7 @@ fn su_elevation_pty_flow() {
                 dst_dir: dir.clone(),
                 move_src: false,
                 overwrite: false,
+                overwrite_in_place: false,
             },
             events_tx.clone(),
         );

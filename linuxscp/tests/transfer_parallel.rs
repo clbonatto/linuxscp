@@ -51,6 +51,7 @@ fn nested_tree_copies_and_counts() {
                 dst_dir: dst.to_string_lossy().into_owned(),
                 move_src: false,
                 overwrite: false,
+                overwrite_in_place: false,
             },
             tx,
         );
@@ -107,6 +108,7 @@ fn move_removes_source_tree() {
                 dst_dir: dst.to_string_lossy().into_owned(),
                 move_src: true,
                 overwrite: false,
+                overwrite_in_place: false,
             },
             tx,
         );
@@ -155,6 +157,7 @@ fn overwrite_replaces_without_conflict() {
                 dst_dir: dst.to_string_lossy().into_owned(),
                 move_src: false,
                 overwrite: true,
+                overwrite_in_place: false,
             },
             tx,
         );
