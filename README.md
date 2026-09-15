@@ -8,6 +8,12 @@
 
 Free and open source. Built for people switching from Windows to Linux.
 
+[![Download .deb for x86-64](https://img.shields.io/badge/Download-.deb%20for%20x86--64-2ea44f?style=for-the-badge&logo=debian&logoColor=white)](https://github.com/theflyingjay/linuxscp/releases/latest/download/linuxscp_amd64.deb)
+[![Download .deb for ARM64](https://img.shields.io/badge/Download-.deb%20for%20ARM64-2ea44f?style=for-the-badge&logo=debian&logoColor=white)](https://github.com/theflyingjay/linuxscp/releases/latest/download/linuxscp_arm64.deb)
+
+[![Latest release](https://img.shields.io/github/v/release/theflyingjay/linuxscp?style=flat-square&label=latest%20release)](https://github.com/theflyingjay/linuxscp/releases/latest)
+[![Website](https://img.shields.io/badge/website-theflyingjay.github.io%2Flinuxscp-blue?style=flat-square)](https://theflyingjay.github.io/linuxscp/)
+
 </div>
 
 ---
@@ -19,6 +25,33 @@ system OpenSSH binary under the hood. It also handles **`sudo` / `su -` elevatio
 can manage root-owned files, and every transfer is **resumable**.
 
 ![The LinuxSCP main window: a dual-pane commander layout with session tabs](docs/dual-pane.png)
+
+## Install
+
+No GitHub account or command line needed on Debian, Ubuntu, Linux Mint, Pop!_OS and
+other Debian-based distributions:
+
+1. **Download** the package for your computer:
+   [x86-64](https://github.com/theflyingjay/linuxscp/releases/latest/download/linuxscp_amd64.deb)
+   (most desktops and laptops) or
+   [ARM64](https://github.com/theflyingjay/linuxscp/releases/latest/download/linuxscp_arm64.deb)
+   (Raspberry Pi and ARM laptops). Not sure? It's almost certainly x86-64.
+2. **Open** the downloaded `.deb` file — double-clicking it in your file manager opens the
+   software installer; click *Install*. Or from a terminal:
+
+   ```bash
+   sudo apt install ~/Downloads/linuxscp_amd64.deb
+   ```
+
+3. **Launch** LinuxSCP from your applications menu. Updates arrive the same way: download
+   the new `.deb` and install it over the old one.
+
+The packages work on Debian 13 "Trixie", Ubuntu 24.04 LTS and newer (anything with
+GTK4 ≥ 4.12 and libadwaita ≥ 1.5). Every release also carries SHA-256 checksums on the
+[releases page](https://github.com/theflyingjay/linuxscp/releases).
+
+On other distributions, install the [Flatpak](#flatpak) or
+[build from source](#building-from-source).
 
 ## Features
 
@@ -140,19 +173,10 @@ Install system-wide (binary, desktop file, icon, metainfo):
 sudo make install
 ```
 
-## Debian / Ubuntu package (.deb)
+## Building a .deb yourself
 
-Prebuilt `.deb`s for **x86-64 and ARM64** are attached to every
-[release](https://github.com/theflyingjay/linuxscp/releases) (built on Ubuntu 24.04,
-with SHA-256 checksums). They install on Debian 13 "Trixie", Ubuntu 24.04 LTS,
-and newer — anything shipping GTK4 ≥ 4.12 and libadwaita ≥ 1.5. On older systems
-`apt` will refuse cleanly; build from source instead.
-
-```bash
-sudo apt install ./linuxscp_amd64.deb   # or linuxscp_arm64.deb
-```
-
-Or build a `.deb` from a release build (no debhelper needed, just `dpkg-deb`):
+The prebuilt packages in the [Install](#install) section are built on Ubuntu 24.04 by CI.
+To build one locally from a release build (no debhelper needed, just `dpkg-deb`):
 
 ```bash
 make deb            # or: ./scripts/build-deb.sh
