@@ -129,7 +129,8 @@ sudo dnf install gtk4-devel libadwaita-devel
 # Arch
 sudo pacman -S gtk4 libadwaita
 
-# Then build and run
+# Then build the app and askpass helper, then run
+cargo build --workspace
 cargo run -p linuxscp
 ```
 
