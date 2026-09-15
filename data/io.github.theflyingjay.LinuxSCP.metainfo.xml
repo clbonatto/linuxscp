@@ -43,6 +43,13 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.1.13" date="2026-09-15">
+      <description>
+        <ul>
+          <li>Push release commits with a deploy key so main can be protected (#4)</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.1.12" date="2026-09-15">
       <description>
         <ul>
