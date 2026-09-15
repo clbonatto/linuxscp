@@ -43,6 +43,13 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.1.11" date="2026-09-15">
+      <description>
+        <ul>
+          <li>Credit contributors in the About dialog</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.1.10" date="2026-09-15">
       <description>
         <ul>
