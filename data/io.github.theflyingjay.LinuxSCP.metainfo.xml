@@ -43,6 +43,16 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.1.10" date="2026-09-15">
+      <description>
+        <ul>
+          <li>Add overwrite_in_place to TransferRequest in integration tests</li>
+          <li>Hold the uploading flag across the post-upload stat</li>
+          <li>Fix stale remote edit refreshes and preserve overwrite metadata (#2)</li>
+          <li>Keep cargo-sources.json in sync with Cargo.lock</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.1.9" date="2026-09-03">
       <description>
         <ul>
