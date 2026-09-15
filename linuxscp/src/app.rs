@@ -681,7 +681,13 @@ impl App {
             .application_name("LinuxSCP")
             .application_icon("io.github.theflyingjay.LinuxSCP")
             .developer_name("Jacob Petrosky")
-            .copyright("© 2026 Jacob Petrosky")
+            // "Name URL" entries render as links in the Credits section.
+            .developers([
+                "Jacob Petrosky https://github.com/theflyingjay",
+                "Christopher Bonatto https://github.com/clbonatto",
+                "Ferenc Géczi https://github.com/Ferenc-",
+            ])
+            .copyright("© 2026 Jacob Petrosky and contributors")
             .version(env!("CARGO_PKG_VERSION"))
             .license_type(gtk::License::Gpl30)
             .comments(
