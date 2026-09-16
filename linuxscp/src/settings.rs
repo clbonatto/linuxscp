@@ -217,6 +217,16 @@ impl Folder {
         self.folders.iter().find_map(|f| f.parent_id_of(child_id))
     }
 
+    /// Id of the site immediately after `site_id` in the same folder.
+    pub fn next_site_id_of(&self, site_id: &str) -> Option<String> {
+        if let Some(pos) = self.sites.iter().position(|site| site.id == site_id) {
+            return self.sites.get(pos + 1).map(|site| site.id.clone());
+        }
+        self.folders
+            .iter()
+            .find_map(|folder| folder.next_site_id_of(site_id))
+    }
+
     /// Copy of this subtree keeping only what matches `query` (lowercase):
     /// matching sites, plus folders that match by name (kept whole) or that
     /// contain a match somewhere below. An empty query returns everything.
@@ -253,11 +263,29 @@ impl Folder {
     /// is found there (drag-and-drop reordering), otherwise appended to the
     /// end. Returns true when the site actually moved.
     pub fn move_site_to(&mut self, site_id: &str, dest_id: &str, before_id: Option<&str>) -> bool {
+        self.move_site_to_impl(site_id, dest_id, before_id, false)
+    }
+
+    /// Move a site to the end of `dest_id`, even when it is already there.
+    pub fn move_site_to_end(&mut self, site_id: &str, dest_id: &str) -> bool {
+        self.move_site_to_impl(site_id, dest_id, None, true)
+    }
+
+    fn move_site_to_impl(
+        &mut self,
+        site_id: &str,
+        dest_id: &str,
+        before_id: Option<&str>,
+        allow_same_parent_end: bool,
+    ) -> bool {
         if before_id == Some(site_id) {
             return false; // dropped onto itself
         }
         let dest = self.folder_or_root_mut(dest_id).id.clone();
-        if before_id.is_none() && self.parent_id_of(site_id) == Some(dest.clone()) {
+        if before_id.is_none()
+            && !allow_same_parent_end
+            && self.parent_id_of(site_id) == Some(dest.clone())
+        {
             return false;
         }
         let Some(site) = self.remove_site(site_id) else {
@@ -272,11 +300,20 @@ impl Folder {
     }
 
     /// Move a folder (subtree and all, sites included) into the folder
-    /// `dest_id` (the root when empty or unknown). Rejects moves into the
+    /// `dest_id` (the root when empty or unknown), inserting it before
+    /// `before_id` when that sibling is found there. Rejects moves into the
     /// folder itself or anywhere below it. Returns true when it moved.
-    pub fn move_folder_to(&mut self, folder_id: &str, dest_id: &str) -> bool {
+    pub fn move_folder_to(
+        &mut self,
+        folder_id: &str,
+        dest_id: &str,
+        before_id: Option<&str>,
+    ) -> bool {
         if folder_id == self.id {
             return false; // the root itself never moves
+        }
+        if before_id == Some(folder_id) {
+            return false; // dropped onto itself
         }
         let dest = self.folder_or_root_mut(dest_id).id.clone();
         // No-ops and cycles: onto itself, into its own subtree, or into the
@@ -287,13 +324,17 @@ impl Folder {
         if moving.find_folder(&dest).is_some() {
             return false;
         }
-        if self.parent_id_of(folder_id) == Some(dest.clone()) {
+        if before_id.is_none() && self.parent_id_of(folder_id) == Some(dest.clone()) {
             return false;
         }
         let Some(folder) = self.remove_folder(folder_id) else {
             return false;
         };
-        self.folder_or_root_mut(&dest).folders.push(folder);
+        let dest_folder = self.folder_or_root_mut(&dest);
+        let pos = before_id
+            .and_then(|id| dest_folder.folders.iter().position(|f| f.id == id))
+            .unwrap_or(dest_folder.folders.len());
+        dest_folder.folders.insert(pos, folder);
         true
     }
 
@@ -481,6 +522,14 @@ mod tests {
         let names: Vec<_> = root.sites.iter().map(|s| s.name.as_str()).collect();
         assert_eq!(names, vec!["c", "a", "b"]);
 
+        // Drag "a" below "b": the last item needs an explicit append.
+        let a_id = root.sites[1].id.clone();
+        let b_id = root.sites[2].id.clone();
+        assert!(root.move_site_to_end(&a_id, ""));
+        let names: Vec<_> = root.sites.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, vec!["c", "b", "a"]);
+        assert_eq!(root.next_site_id_of(&b_id), Some(a_id));
+
         // Dropping onto itself is a no-op.
         assert!(!root.move_site_to(&c_id, "", Some(&c_id)));
     }
@@ -500,24 +549,33 @@ mod tests {
         root.folders.push(home);
 
         // Move Backups (with its site) from Production into Homelab.
-        assert!(root.move_folder_to(&backups_id, &home_id));
+        assert!(root.move_folder_to(&backups_id, &home_id, None));
         assert!(root.find_folder(&prod_id).unwrap().folders.is_empty());
         let moved = &root.find_folder(&home_id).unwrap().folders[0];
         assert_eq!(moved.name, "Backups");
         assert_eq!(moved.sites.len(), 1, "sites must travel with the folder");
 
         // Cycles: into itself, or into its own subtree.
-        assert!(!root.move_folder_to(&home_id, &home_id));
-        assert!(!root.move_folder_to(&home_id, &backups_id));
+        assert!(!root.move_folder_to(&home_id, &home_id, None));
+        assert!(!root.move_folder_to(&home_id, &backups_id, None));
 
         // Already in the destination: no-op.
-        assert!(!root.move_folder_to(&backups_id, &home_id));
+        assert!(!root.move_folder_to(&backups_id, &home_id, None));
 
         // Folder -> root, and the root itself never moves.
-        assert!(root.move_folder_to(&backups_id, ""));
+        assert!(root.move_folder_to(&backups_id, "", None));
         assert!(root.folders.iter().any(|f| f.id == backups_id));
         let root_id = root.id.clone();
-        assert!(!root.move_folder_to(&root_id, &home_id));
+        assert!(!root.move_folder_to(&root_id, &home_id, None));
+
+        let first_id = root.folders[0].id.clone();
+        assert!(root.move_folder_to(&home_id, "", Some(&first_id)));
+        let names: Vec<_> = root
+            .folders
+            .iter()
+            .map(|folder| folder.name.as_str())
+            .collect();
+        assert_eq!(names, vec!["Homelab", "Production", "Backups"]);
     }
 
     #[test]

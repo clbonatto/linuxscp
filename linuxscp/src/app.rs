@@ -430,10 +430,13 @@ impl App {
             Some(id) => {
                 let handle = sessions::get(id);
                 let use_name = self.settings.borrow().tab_shows_name;
-                let text = handle
-                    .as_ref()
-                    .filter(|h| use_name && !h.display_name.is_empty())
-                    .map(|h| h.display_name.clone())
+                let name = self
+                    .session_specs
+                    .borrow()
+                    .get(&id)
+                    .map(|spec| spec.display_name.clone())
+                    .filter(|name| use_name && !name.is_empty());
+                let text = name
                     .or_else(|| handle.as_ref().map(|h| h.host.clone()))
                     .unwrap_or_else(|| "Remote".into());
                 page.set_title(&text);
@@ -637,7 +640,7 @@ impl App {
             .description("How connected tabs are labeled")
             .build();
         let tab_name_row = adw::SwitchRow::builder()
-            .title("Use Name as tab description")
+            .title("Show site name on tabs")
             .subtitle("Show the saved site's name on the tab instead of its host")
             .active(self.settings.borrow().tab_shows_name)
             .build();
@@ -1227,19 +1230,25 @@ impl App {
             },
             move_site: {
                 let this = self.clone();
-                Box::new(move |site_id, dest_id, before_id| {
+                Box::new(move |site_id, dest_id, before_id, append_to_end| {
                     this.with_settings_saved(|settings| {
-                        settings
-                            .sites
-                            .move_site_to(&site_id, &dest_id, before_id.as_deref());
+                        if append_to_end {
+                            settings.sites.move_site_to_end(&site_id, &dest_id);
+                        } else {
+                            settings
+                                .sites
+                                .move_site_to(&site_id, &dest_id, before_id.as_deref());
+                        }
                     });
                 })
             },
             move_folder: {
                 let this = self.clone();
-                Box::new(move |folder_id, dest_id| {
+                Box::new(move |folder_id, dest_id, before_id| {
                     this.with_settings_saved(|settings| {
-                        settings.sites.move_folder_to(&folder_id, &dest_id);
+                        settings
+                            .sites
+                            .move_folder_to(&folder_id, &dest_id, before_id.as_deref());
                     });
                 })
             },
@@ -1361,12 +1370,7 @@ impl App {
                 Ok(Ok(conn)) => {
                     sessions::register(
                         id,
-                        sessions::SessionHandle::new(
-                            conn.sftp,
-                            conn.cancel,
-                            spec.host.clone(),
-                            spec.display_name.clone(),
-                        ),
+                        sessions::SessionHandle::new(conn.sftp, conn.cancel, spec.host.clone()),
                     );
                     this.session_specs.borrow_mut().insert(id, spec.clone());
                     let label = match spec.elevation {
