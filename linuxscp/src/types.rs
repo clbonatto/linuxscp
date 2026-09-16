@@ -201,6 +201,10 @@ pub struct TransferRequest {
     /// Overwrite existing destination files without asking. Used by edit
     /// re-uploads, where the destination existing is the normal case.
     pub overwrite: bool,
+    /// When overwriting, truncate and rewrite the destination path instead
+    /// of replacing it through a .filepart rename. Used for editor temp
+    /// files so external editors keep watching the same inode.
+    pub overwrite_in_place: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

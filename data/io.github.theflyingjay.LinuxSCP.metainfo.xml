@@ -43,6 +43,45 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="0.1.14" date="2026-09-15">
+      <description>
+        <ul>
+          <li>Update event-listener to 5.4.2 for RUSTSEC-2026-0221 (#6)</li>
+          <li>Add RustSec audit workflow, CODEOWNERS, and contributing notes (#5)</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.1.13" date="2026-09-15">
+      <description>
+        <ul>
+          <li>Push release commits with a deploy key so main can be protected (#4)</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.1.12" date="2026-09-15">
+      <description>
+        <ul>
+          <li>Put download buttons and install steps at the top of the README</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.1.11" date="2026-09-15">
+      <description>
+        <ul>
+          <li>Credit contributors in the About dialog</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.1.10" date="2026-09-15">
+      <description>
+        <ul>
+          <li>Add overwrite_in_place to TransferRequest in integration tests</li>
+          <li>Hold the uploading flag across the post-upload stat</li>
+          <li>Fix stale remote edit refreshes and preserve overwrite metadata (#2)</li>
+          <li>Keep cargo-sources.json in sync with Cargo.lock</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.1.9" date="2026-09-03">
       <description>
         <ul>
