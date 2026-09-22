@@ -416,9 +416,12 @@ pub fn show(parent: &impl IsA<gtk::Widget>, handlers: SiteManagerHandlers) {
         })
     };
 
-    // Drag & drop: the upper half of a folder row inserts before that folder;
-    // the lower half moves into it. Sites are inserted before their row, and
-    // the background targets the root.
+    // Drag & drop. A folder row is split for folder drags only: the upper
+    // half inserts the dragged folder before it, the lower half moves it
+    // inside; a site dropped anywhere on a folder row moves into that
+    // folder. A site row places a dragged site above or below it, while a
+    // folder dropped on a site row joins the site's folder. The background
+    // targets the root.
     {
         let handlers = handlers.clone();
         let rebuild = rebuild.clone();
@@ -426,9 +429,10 @@ pub fn show(parent: &impl IsA<gtk::Widget>, handlers: SiteManagerHandlers) {
             let Some((kind, id)) = payload.split_once(':') else {
                 return;
             };
+            let moving_folder = kind == "folder";
             let (dest, before_id) = match &target {
                 None => (String::new(), None),
-                Some(node) if node.is_folder() && before_target => (
+                Some(node) if node.is_folder() && moving_folder && before_target => (
                     (handlers.tree)()
                         .parent_id_of(&node.id())
                         .unwrap_or_default(),
@@ -438,7 +442,9 @@ pub fn show(parent: &impl IsA<gtk::Widget>, handlers: SiteManagerHandlers) {
                 Some(node) => {
                     let tree = (handlers.tree)();
                     let dest = tree.parent_id_of(&node.id()).unwrap_or_default();
-                    let before_id = if before_target {
+                    let before_id = if moving_folder {
+                        None
+                    } else if before_target {
                         Some(node.id())
                     } else {
                         tree.next_site_id_of(&node.id())
@@ -446,11 +452,15 @@ pub fn show(parent: &impl IsA<gtk::Widget>, handlers: SiteManagerHandlers) {
                     (dest, before_id)
                 }
             };
-            let append_to_end = matches!(&target, Some(node) if !node.is_folder() && !before_target)
+            // Below the last site of a folder: an explicit append, since
+            // there is no sibling to insert before.
+            let append_to_end = !moving_folder
+                && matches!(&target, Some(node) if !node.is_folder() && !before_target)
                 && before_id.is_none();
-            match kind {
-                "folder" => (handlers.move_folder)(id.to_string(), dest, before_id),
-                _ => (handlers.move_site)(id.to_string(), dest, before_id, append_to_end),
+            if moving_folder {
+                (handlers.move_folder)(id.to_string(), dest, before_id);
+            } else {
+                (handlers.move_site)(id.to_string(), dest, before_id, append_to_end);
             }
             rebuild(Some(id.to_string()));
         }));
